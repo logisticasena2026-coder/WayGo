@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "WayGo - Plataforma inteligente de transporte y servicios (personas, paquetes y contratos mensuales)",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "BSD-2-Clause",
   "workspaces": [
     "backend",
     "frontend"

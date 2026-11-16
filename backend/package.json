@@ -13,7 +13,7 @@
     "prisma:seed": "node ../prisma/seed.js",
     "test": "node --test ../tests/*.test.js"
   },
-  "license": "UNLICENSED",
+  "license": "BSD-2-Clause",
   "private": true,
   "dependencies": {
     "@prisma/client": "^6.2.1",
