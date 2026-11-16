@@ -1,0 +1,64 @@
+# ============================================================
+# WayGo - Docker Compose (alternativa de despliegue)
+# En este entorno se usa PostgreSQL portable (tools/postgresql).
+# Este archivo facilita la instalacion en equipos con Docker.
+# ============================================================
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: waygo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: waygo
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+      POSTGRES_DB: waygo_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - waygo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waygo -d waygo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: waygo-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://waygo:${DB_PASSWORD}@db:5432/waygo_db?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-console}
+    ports:
+      - "4000:4000"
+    volumes:
+      - waygo-uploads:/app/uploads
+    command: >
+      sh -c "npx prisma migrate deploy --schema ../prisma/schema.prisma
+             && node ../prisma/seed.js
+             && node src/server.js"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: waygo-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  waygo-pgdata:
+  waygo-uploads:

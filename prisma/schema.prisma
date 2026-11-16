@@ -1,0 +1,887 @@
+// ============================================================
+// WayGo - Esquema de base de datos (PostgreSQL + Prisma ORM)
+// Convenciones:
+//  - PK: UUID (uuid v4 generado por pgcrypto/cliente)
+//  - Fechas: timestamptz en UTC (la presentacion usa APP_TIMEZONE)
+//  - Dinero: Decimal(12,2)
+//  - Coordenadas: double precision (lat/lng)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------
+// ENUMERACIONES
+// ------------------------------------------------------------
+
+enum RoleName {
+  ADMIN
+  CUSTOMER
+  DRIVER
+  CALL_CENTER
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION // registrado, correo sin confirmar
+  ACTIVE
+  BLOCKED
+  DELETED
+}
+
+// Estado operativo del conductor
+enum DriverOperationalStatus {
+  OFFLINE // DESCONECTADO
+  AVAILABLE // DISPONIBLE
+  BUSY // OCUPADO
+}
+
+// Estado de verificacion documental
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum RequestStatus {
+  DRAFT // BORRADOR
+  PUBLISHED // PUBLICADA
+  RECEIVING_OFFERS // RECIBIENDO_OFERTAS
+  OFFERED // OFERTADA
+  ACCEPTED // ACEPTADA
+  ASSIGNED // ASIGNADA
+  EN_ROUTE // EN_CAMINO
+  IN_SERVICE // EN_SERVICIO
+  COMPLETED // COMPLETADA
+  CANCELLED // CANCELADA
+  EXPIRED // EXPIRADA
+}
+
+enum ServiceKind {
+  PASSENGER // transporte de personas
+  PACKAGE // transporte de paquetes
+  MONTHLY // servicio contratado mensualmente
+}
+
+enum OfferStatus {
+  PENDING // oferta activa esperando decision del cliente
+  ACCEPTED // aceptada por el cliente
+  REJECTED // rechazada por el cliente
+  WITHDRAWN // retirada por el conductor
+  EXPIRED // expirada
+  BLOCKED // bloqueada porque otra oferta fue aceptada
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  DRIVER_EN_ROUTE
+  IN_SERVICE
+  COMPLETED
+  CANCELLED
+}
+
+enum PackageStatus {
+  PENDING
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  INCIDENT
+  CANCELLED
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum ExecutionStatus {
+  PENDING
+  GENERATED
+  COMPLETED
+  CANCELLED
+  MISSED
+}
+
+enum ReviewType {
+  CUSTOMER_TO_DRIVER // cliente evalua conductor
+  DRIVER_TO_CUSTOMER // conductor evalua cliente
+  CUSTOMER_VEHICLE_SERVICE // cliente evalua vehiculo y servicio
+  CALL_CENTER_INCIDENT // call center registra evaluacion de incidencia
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  WALLET
+  TRANSFER
+  OTHER
+}
+
+enum TokenType {
+  EMAIL_CONFIRMATION
+  PASSWORD_RESET
+}
+
+// ------------------------------------------------------------
+// 1-2. ROLES Y USUARIOS
+// ------------------------------------------------------------
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        RoleName @unique
+  description String?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique @db.VarChar(160)
+  passwordHash    String     @map("password_hash")
+  status          UserStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz
+  createdAt       DateTime   @default(now()) @db.Timestamptz
+  updatedAt       DateTime   @updatedAt @db.Timestamptz
+
+  roleId String @map("role_id") @db.Uuid
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  // Perfiles (1 a 1)
+  profile           UserProfile?
+  driverProfile     DriverProfile?
+  customerProfile   CustomerProfile?
+  callCenterProfile CallCenterOperator?
+
+  // Seguridad / sesiones
+  refreshTokens      RefreshToken[]
+  verificationTokens VerificationToken[]
+
+  // Relaciones operativas
+  customerRequests  ServiceRequest[]  @relation("RequestCustomer")
+  driverOffers      ServiceOffer[]    @relation("OfferDriver")
+  driverAssignments ServiceAssignment[] @relation("AssignmentDriver")
+  assignmentsGiven  ServiceAssignment[] @relation("AssignmentAssignedBy")
+  serviceEvents     ServiceEvent[]
+  reviewsAuthored   Review[]          @relation("ReviewReviewer")
+  reviewsReceived   Review[]          @relation("ReviewReviewee")
+  notifications     Notification[]
+  ticketsReported   SupportTicket[]   @relation("TicketReporter")
+  ticketsHandled    SupportTicket[]   @relation("TicketHandler")
+  contractsAsCustomer MonthlyContract[] @relation("ContractCustomer")
+  contractsAsDriver   MonthlyContract[] @relation("ContractDriver")
+  paymentsAsCustomer  PaymentRecord[] @relation("PaymentCustomer")
+  paymentsAsDriver    PaymentRecord[] @relation("PaymentDriver")
+  auditLogs         AuditLog[]
+  locationShares    DriverLocationShare[]
+
+  @@index([roleId])
+  @@index([status])
+  @@map("users")
+}
+
+// ------------------------------------------------------------
+// 3. PERFIL GENERAL DE USUARIO
+// ------------------------------------------------------------
+
+model UserProfile {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  firstName    String   @map("first_name") @db.VarChar(80)
+  lastName     String   @map("last_name") @db.VarChar(80)
+  phone        String?  @db.VarChar(30)
+  documentType String?  @map("document_type") @db.VarChar(10) // CC, CE, NIT, PAS
+  documentNumber String? @map("document_number") @db.VarChar(30)
+  birthDate    DateTime? @map("birth_date") @db.Date
+  address      String?  @db.VarChar(255)
+  city         String?  @db.VarChar(100)
+  photoUrl     String?  @map("photo_url")
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// ------------------------------------------------------------
+// 4. PERFIL DE CLIENTE
+// ------------------------------------------------------------
+
+model CustomerProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  totalTrips         Int      @default(0) @map("total_trips")
+  totalKm            Decimal  @default(0) @db.Decimal(12, 2) @map("total_km")
+  totalSpent         Decimal  @default(0) @db.Decimal(14, 2) @map("total_spent")
+  averageRatingGiven Decimal? @db.Decimal(3, 2) @map("average_rating_given")
+  averageRatingReceived Decimal? @db.Decimal(3, 2) @map("average_rating_received")
+  createdAt          DateTime @default(now()) @db.Timestamptz
+  updatedAt          DateTime @updatedAt @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("customer_profiles")
+}
+
+// ------------------------------------------------------------
+// 5. PERFIL DE CONDUCTOR
+// ------------------------------------------------------------
+
+model DriverProfile {
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @unique @map("user_id") @db.Uuid
+  licenseNumber         String?  @map("license_number") @db.VarChar(40)
+  licenseCategory       String?  @map("license_category") @db.VarChar(10)
+  licenseExpiresAt      DateTime? @map("license_expires_at") @db.Date
+  operationalStatus     DriverOperationalStatus @default(OFFLINE) @map("operational_status")
+  verificationStatus    VerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz
+  verifiedById          String?   @map("verified_by") @db.Uuid
+  locationConsent       Boolean   @default(false) @map("location_consent")
+  locationConsentAt     DateTime? @map("location_consent_at") @db.Timestamptz
+  lastLat               Float?    @map("last_lat")
+  lastLng               Float?    @map("last_lng")
+  lastLocationAt        DateTime? @map("last_location_at") @db.Timestamptz
+  totalTrips            Int       @default(0) @map("total_trips")
+  totalKm               Decimal   @default(0) @db.Decimal(12, 2) @map("total_km")
+  totalEarnings         Decimal   @default(0) @db.Decimal(14, 2) @map("total_earnings")
+  averageRating         Decimal?  @db.Decimal(3, 2) @map("average_rating")
+  completedCount        Int       @default(0) @map("completed_count")
+  cancelledCount        Int       @default(0) @map("cancelled_count")
+  createdAt             DateTime  @default(now()) @db.Timestamptz
+  updatedAt             DateTime  @updatedAt @db.Timestamptz
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicles     Vehicle[]
+  documents    DriverDocument[]
+
+  @@index([operationalStatus, verificationStatus])
+  @@index([lastLat, lastLng])
+  @@map("driver_profiles")
+}
+
+// Comparticion de ubicacion autorizada (historial del conductor conectado)
+model DriverLocationShare {
+  id         String   @id @default(uuid()) @db.Uuid
+  driverId   String   @map("driver_id") @db.Uuid
+  lat        Float
+  lng        Float
+  heading    Float?
+  speed      Float?
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+
+  driver User @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, recordedAt])
+  @@map("driver_location_shares")
+}
+
+// ------------------------------------------------------------
+// 6-7. VEHICULOS Y SUS DOCUMENTOS
+// ------------------------------------------------------------
+
+model Vehicle {
+  id           String   @id @default(uuid()) @db.Uuid
+  driverId     String   @map("driver_id") @db.Uuid
+  plate        String   @db.VarChar(10)
+  brand        String   @db.VarChar(60)
+  model        String   @db.VarChar(60)
+  year         Int?
+  color        String   @db.VarChar(40)
+  type         String?  @db.VarChar(40) // sedan, suv, moto, camioneta...
+  capacity     Int      @default(4)
+  photoUrl     String?  @map("photo_url")
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  isActive     Boolean  @default(true) @map("is_active")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  driver    DriverProfile     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  documents VehicleDocument[]
+  offers    ServiceOffer[]
+  assignments ServiceAssignment[]
+
+  @@unique([driverId, plate], name: "driverPlate")
+  @@index([driverId])
+  @@map("vehicles")
+}
+
+model VehicleDocument {
+  id          String   @id @default(uuid()) @db.Uuid
+  vehicleId   String   @map("vehicle_id") @db.Uuid
+  type        String   @db.VarChar(40) // SOAT, TECNOMECANICA, TARJETA_PROPIEDAD, OTRO
+  fileUrl     String   @map("file_url")
+  issuedAt    DateTime? @map("issued_at") @db.Date
+  expiresAt   DateTime? @map("expires_at") @db.Date
+  status      DocumentStatus @default(PENDING)
+  reviewedById String?  @map("reviewed_by") @db.Uuid
+  reviewedAt  DateTime? @map("reviewed_at") @db.Timestamptz
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, status])
+  @@map("vehicle_documents")
+}
+
+// ------------------------------------------------------------
+// 8. DOCUMENTOS DEL CONDUCTOR
+// ------------------------------------------------------------
+
+model DriverDocument {
+  id           String   @id @default(uuid()) @db.Uuid
+  driverId     String   @map("driver_id") @db.Uuid
+  type         String   @db.VarChar(40) // LICENCIA, CEDULA, ANTECEDENTES, SEGURO, OTRO
+  fileUrl      String   @map("file_url")
+  issuedAt     DateTime? @map("issued_at") @db.Date
+  expiresAt    DateTime? @map("expires_at") @db.Date
+  status       DocumentStatus @default(PENDING)
+  reviewedById String?  @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime? @map("reviewed_at") @db.Timestamptz
+  notes        String?
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  driver DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, status])
+  @@map("driver_documents")
+}
+
+// ------------------------------------------------------------
+// 10. CATALOGO DE TIPOS DE SERVICIO
+// ------------------------------------------------------------
+
+model ServiceType {
+  id          String      @id @default(uuid()) @db.Uuid
+  code        ServiceKind @unique
+  name        String      @db.VarChar(80)
+  description String?
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @db.Timestamptz
+
+  requests ServiceRequest[]
+
+  @@map("service_types")
+}
+
+// ------------------------------------------------------------
+// 9. SOLICITUDES DE SERVICIO
+// ------------------------------------------------------------
+
+model ServiceRequest {
+  id            String   @id @default(uuid()) @db.Uuid
+  requestNumber Int      @unique @default(autoincrement()) @map("request_number")
+  customerId    String   @map("customer_id") @db.Uuid
+  serviceTypeId String   @map("service_type_id") @db.Uuid
+  status        RequestStatus @default(DRAFT)
+
+  // Origen / destino
+  pickupAddress   String  @map("pickup_address") @db.VarChar(255)
+  pickupLat       Float?  @map("pickup_lat")
+  pickupLng       Float?  @map("pickup_lng")
+  dropoffAddress  String  @map("dropoff_address") @db.VarChar(255)
+  dropoffLat      Float?  @map("dropoff_lat")
+  dropoffLng      Float?  @map("dropoff_lng")
+
+  // Programacion (UTC)
+  scheduledDate   DateTime @map("scheduled_date") @db.Date
+  scheduledTime   String   @map("scheduled_time") @db.VarChar(5) // HH:mm local operativo
+  scheduledAtUtc  DateTime @map("scheduled_at_utc") @db.Timestamptz
+
+  // Detalles
+  passengerCount  Int?    @map("passenger_count")
+  observations    String?
+  proposedPrice   Decimal @map("proposed_price") @db.Decimal(12, 2)
+  finalPrice      Decimal? @map("final_price") @db.Decimal(12, 2)
+  distanceKm      Decimal? @map("distance_km") @db.Decimal(10, 2)
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz
+  cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelReason    String?   @map("cancel_reason")
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  customer      User          @relation("RequestCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  serviceType   ServiceType   @relation(fields: [serviceTypeId], references: [id], onDelete: Restrict)
+  offers        ServiceOffer[]
+  assignment    ServiceAssignment?
+  tracking      ServiceTracking[]
+  events        ServiceEvent[]
+  package       Package?
+  reviews       Review[]
+  tickets       SupportTicket[]
+  payments      PaymentRecord[]
+  contractExecution ContractExecution?
+
+  @@index([status, scheduledAtUtc])
+  @@index([customerId])
+  @@map("service_requests")
+}
+
+// ------------------------------------------------------------
+// 11. OFERTAS DE CONDUCTORES
+// ------------------------------------------------------------
+
+model ServiceOffer {
+  id          String   @id @default(uuid()) @db.Uuid
+  requestId   String   @map("request_id") @db.Uuid
+  driverId    String   @map("driver_id") @db.Uuid
+  vehicleId   String   @map("vehicle_id") @db.Uuid
+  price       Decimal  @db.Decimal(12, 2)
+  isCounteroffer Boolean @default(false) @map("is_counteroffer") // false = acepta precio propuesto
+  message     String?  @db.VarChar(500)
+  etaMinutes  Int?     @map("eta_minutes") // tiempo estimado de llegada
+  status      OfferStatus @default(PENDING)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  driver  User           @relation("OfferDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  assignment ServiceAssignment?
+
+  @@unique([requestId, driverId], name: "oneActiveOfferPerDriver")
+  @@index([requestId, status])
+  @@index([driverId, status])
+  @@map("service_offers")
+}
+
+// ------------------------------------------------------------
+// 12. ASIGNACION DE SERVICIO (una sola por solicitud)
+// ------------------------------------------------------------
+
+model ServiceAssignment {
+  id          String   @id @default(uuid()) @db.Uuid
+  requestId   String   @unique @map("request_id") @db.Uuid
+  offerId     String?  @unique @map("offer_id") @db.Uuid
+  driverId    String   @map("driver_id") @db.Uuid
+  vehicleId   String   @map("vehicle_id") @db.Uuid
+  assignedById String? @map("assigned_by") @db.Uuid // operador call center (asignacion manual) o null (automatica)
+  isManual    Boolean  @default(false) @map("is_manual")
+  status      AssignmentStatus @default(ASSIGNED)
+  agreedPrice Decimal  @map("agreed_price") @db.Decimal(12, 2)
+  driverArrivedAt DateTime? @map("driver_arrived_at") @db.Timestamptz
+  startedAt   DateTime? @map("started_at") @db.Timestamptz
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz
+  actualKm    Decimal? @map("actual_km") @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  offer   ServiceOffer?  @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  driver  User           @relation("AssignmentDriver", fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  assignedBy User?       @relation("AssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([driverId, status])
+  @@map("service_assignments")
+}
+
+// ------------------------------------------------------------
+// 13. SEGUIMIENTO GPS DEL SERVICIO
+// ------------------------------------------------------------
+
+model ServiceTracking {
+  id         String   @id @default(uuid()) @db.Uuid
+  requestId  String   @map("request_id") @db.Uuid
+  lat        Float
+  lng        Float
+  heading    Float?
+  speed      Float?
+  source     String?  @db.VarChar(20) // driver_app, call_center
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, recordedAt])
+  @@map("service_tracking")
+}
+
+// ------------------------------------------------------------
+// 14. EVENTOS DEL SERVICIO (trazabilidad)
+// ------------------------------------------------------------
+
+model ServiceEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  requestId String   @map("request_id") @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  type      String   @db.VarChar(60) // CREATED, PUBLISHED, OFFER_RECEIVED, OFFER_ACCEPTED, ASSIGNED, ...
+  payload   Json?
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor   User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+  @@map("service_events")
+}
+
+// ------------------------------------------------------------
+// 15-16. PAQUETES Y EVIDENCIA DE ENTREGA
+// ------------------------------------------------------------
+
+model Package {
+  id               String   @id @default(uuid()) @db.Uuid
+  requestId        String   @unique @map("request_id") @db.Uuid
+  trackingCode     String   @unique @map("tracking_code") @db.VarChar(24)
+  senderName       String   @map("sender_name") @db.VarChar(120)
+  recipientName    String   @map("recipient_name") @db.VarChar(120)
+  recipientPhone   String?  @map("recipient_phone") @db.VarChar(30)
+  description      String
+  weightKg         Decimal? @map("weight_kg") @db.Decimal(8, 2)
+  dimensions       String?  @db.VarChar(60) // ej: 30x20x15 cm
+  photoUrl         String?  @map("photo_url")
+  declaredValue    Decimal? @map("declared_value") @db.Decimal(12, 2)
+  status           PackageStatus @default(PENDING)
+  pickedUpAt       DateTime? @map("picked_up_at") @db.Timestamptz
+  deliveredAt      DateTime? @map("delivered_at") @db.Timestamptz
+  createdAt        DateTime @default(now()) @db.Timestamptz
+  updatedAt        DateTime @updatedAt @db.Timestamptz
+
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  evidence PackageDeliveryEvidence?
+
+  @@index([status])
+  @@map("packages")
+}
+
+model PackageDeliveryEvidence {
+  id           String   @id @default(uuid()) @db.Uuid
+  packageId    String   @unique @map("package_id") @db.Uuid
+  receivedBy   String   @map("received_by") @db.VarChar(120)
+  receiverDocument String? @map("receiver_document") @db.VarChar(30)
+  signatureUrl String?  @map("signature_url")
+  photoUrl     String?  @map("photo_url")
+  notes        String?
+  deliveredAt  DateTime @default(now()) @map("delivered_at") @db.Timestamptz
+  createdAt    DateTime @default(now()) @db.Timestamptz
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@map("package_delivery_evidences")
+}
+
+// ------------------------------------------------------------
+// 17-19. CONTRATOS MENSUALES
+// ------------------------------------------------------------
+
+model MonthlyContract {
+  id              String   @id @default(uuid()) @db.Uuid
+  contractNumber  Int      @unique @default(autoincrement()) @map("contract_number")
+  customerId      String   @map("customer_id") @db.Uuid
+  driverId        String?  @map("driver_id") @db.Uuid // se asigna cuando corresponda
+  type            String   @db.VarChar(60) // ej: ESCOLAR, EMPRESARIAL, PERSONAL
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  pickupAddress   String   @map("pickup_address") @db.VarChar(255)
+  pickupLat       Float?   @map("pickup_lat")
+  pickupLng       Float?   @map("pickup_lng")
+  dropoffAddress  String   @map("dropoff_address") @db.VarChar(255)
+  dropoffLat      Float?   @map("dropoff_lat")
+  dropoffLng      Float?   @map("dropoff_lng")
+  servicesIncluded Int     @map("services_included")
+  kmIncluded      Decimal? @map("km_included") @db.Decimal(10, 2)
+  monthlyPrice    Decimal  @map("monthly_price") @db.Decimal(12, 2)
+  conditions      String?
+  status          ContractStatus @default(DRAFT)
+  servicesUsed    Int      @default(0) @map("services_used")
+  kmUsed          Decimal  @default(0) @map("km_used") @db.Decimal(10, 2)
+  expiryAlertSentAt DateTime? @map("expiry_alert_sent_at") @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+
+  customer   User               @relation("ContractCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  driver     User?              @relation("ContractDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  schedules  ContractSchedule[]
+  executions ContractExecution[]
+
+  @@index([customerId, status])
+  @@index([status, endDate])
+  @@map("monthly_contracts")
+}
+
+model ContractSchedule {
+  id         String   @id @default(uuid()) @db.Uuid
+  contractId String   @map("contract_id") @db.Uuid
+  dayOfWeek  Int      @map("day_of_week") // 0=domingo ... 6=sabado
+  time       String   @db.VarChar(5) // HH:mm horario operativo
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  contract MonthlyContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  executions ContractExecution[]
+
+  @@index([contractId, dayOfWeek])
+  @@map("contract_schedules")
+}
+
+model ContractExecution {
+  id          String   @id @default(uuid()) @db.Uuid
+  contractId  String   @map("contract_id") @db.Uuid
+  scheduleId  String?  @map("schedule_id") @db.Uuid
+  requestId   String?  @unique @map("request_id") @db.Uuid
+  plannedDate DateTime @map("planned_date") @db.Date
+  plannedTime String   @map("planned_time") @db.VarChar(5)
+  status      ExecutionStatus @default(PENDING)
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  contract MonthlyContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  schedule ContractSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  request  ServiceRequest?   @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([contractId, plannedDate])
+  @@index([status, plannedDate])
+  @@map("contract_executions")
+}
+
+// ------------------------------------------------------------
+// 20-21. EVALUACIONES Y CRITERIOS
+// ------------------------------------------------------------
+
+model ReviewCriteria {
+  id       String   @id @default(uuid()) @db.Uuid
+  code     String   @unique @db.VarChar(40) // PUNCTUALITY, PRESENTATION, KINDNESS, QUALITY, SAFETY, VEHICLE_STATE, INSTRUCTIONS
+  name     String   @db.VarChar(80)
+  appliesTo ReviewType @map("applies_to")
+  isActive Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  scores ReviewScore[]
+
+  @@map("review_criteria")
+}
+
+model Review {
+  id         String   @id @default(uuid()) @db.Uuid
+  requestId  String   @map("request_id") @db.Uuid
+  reviewerId String   @map("reviewer_id") @db.Uuid
+  revieweeId String   @map("reviewee_id") @db.Uuid
+  type       ReviewType
+  overall    Decimal  @db.Decimal(3, 2) // promedio 1.00 - 5.00
+  comment    String?  @db.VarChar(1000)
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  reviewer User           @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewee User           @relation("ReviewReviewee", fields: [revieweeId], references: [id], onDelete: Restrict)
+  scores   ReviewScore[]
+
+  @@unique([requestId, reviewerId, type], name: "noDuplicateReview")
+  @@index([revieweeId, type])
+  @@map("reviews")
+}
+
+model ReviewScore {
+  id         String   @id @default(uuid()) @db.Uuid
+  reviewId   String   @map("review_id") @db.Uuid
+  criteriaId String   @map("criteria_id") @db.Uuid
+  score      Int      // 1..5
+
+  review   Review         @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  criteria ReviewCriteria @relation(fields: [criteriaId], references: [id], onDelete: Restrict)
+
+  @@unique([reviewId, criteriaId], name: "oneScorePerCriteria")
+  @@map("review_scores")
+}
+
+// ------------------------------------------------------------
+// 22. NOTIFICACIONES
+// ------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(60) // NEW_OFFER, OFFER_ACCEPTED, REQUEST_ASSIGNED, DRIVER_EN_ROUTE, SERVICE_STARTED, SERVICE_FINISHED, CANCELLED, INCIDENT, CONTRACT_UPDATE, ...
+  title     String   @db.VarChar(160)
+  body      String?
+  data      Json?
+  readAt    DateTime? @map("read_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// ------------------------------------------------------------
+// 23. TICKETS DE SOPORTE / INCIDENCIAS
+// ------------------------------------------------------------
+
+model SupportTicket {
+  id          String   @id @default(uuid()) @db.Uuid
+  ticketNumber Int     @unique @default(autoincrement()) @map("ticket_number")
+  requestId   String?  @map("request_id") @db.Uuid
+  reporterId  String   @map("reporter_id") @db.Uuid
+  handlerId   String?  @map("handler_id") @db.Uuid
+  subject     String   @db.VarChar(160)
+  description String
+  status      TicketStatus @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  resolution  String?
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  closedAt    DateTime? @map("closed_at") @db.Timestamptz
+
+  request  ServiceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  reporter User            @relation("TicketReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  handler  User?           @relation("TicketHandler", fields: [handlerId], references: [id], onDelete: SetNull)
+
+  @@index([status, priority])
+  @@map("support_tickets")
+}
+
+// ------------------------------------------------------------
+// 24. OPERADORES DE CALL CENTER
+// ------------------------------------------------------------
+
+model CallCenterOperator {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @unique @map("user_id") @db.Uuid
+  extension  String?  @db.VarChar(10)
+  shift      String?  @db.VarChar(30) // MANANA, TARDE, NOCHE
+  isOnDuty   Boolean  @default(false) @map("is_on_duty")
+  hiredAt    DateTime? @map("hired_at") @db.Date
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("call_center_operators")
+}
+
+// ------------------------------------------------------------
+// 25. REGISTROS DE PAGO
+// ------------------------------------------------------------
+
+model PaymentRecord {
+  id          String   @id @default(uuid()) @db.Uuid
+  requestId   String   @map("request_id") @db.Uuid
+  customerId  String   @map("customer_id") @db.Uuid
+  driverId    String?  @map("driver_id") @db.Uuid
+  amount      Decimal  @db.Decimal(12, 2)
+  method      PaymentMethod @default(CASH)
+  status      PaymentStatus @default(PENDING)
+  reference   String?  @db.VarChar(120)
+  paidAt      DateTime? @map("paid_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  customer User           @relation("PaymentCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  driver   User?          @relation("PaymentDriver", fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("payment_records")
+}
+
+// ------------------------------------------------------------
+// 26. AUDITORIA
+// ------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  actorEmail String?  @map("actor_email") @db.VarChar(160)
+  action     String   @db.VarChar(80) // USER_CREATED, LOGIN_SUCCESS, MANUAL_ASSIGNMENT, PRICE_CHANGED, ...
+  entity     String?  @db.VarChar(60) // tabla/entidad afectada
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ------------------------------------------------------------
+// SOPORTE DE AUTENTICACION (sesiones y tokens)
+// ------------------------------------------------------------
+
+model RefreshToken {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  tokenHash   String   @map("token_hash") // sha256 del token (nunca el token en claro)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  createdByIp String?  @map("created_by_ip") @db.VarChar(45)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz
+  replacedById String? @map("replaced_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model VerificationToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @map("token_hash") // sha256 del token enviado por correo
+  type      TokenType
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([tokenHash])
+  @@map("verification_tokens")
+}

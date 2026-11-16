@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Variables de entorno con secretos
+.env
+**/.env
+
+# PostgreSQL portable (binarios y datos - se descarga/instala localmente)
+tools/postgresql/
+
+# Archivos subidos por usuarios
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Build de frontend
+frontend/dist/
+
+# Prisma (cliente generado se reconstruye con prisma generate)
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
