@@ -105,12 +105,14 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    ports:
-      # Entrada de la aplicacion. En Dokploy no hace falta publicarla
-      # (Traefik enruta por la red Docker), pero se conserva para poder
-      # probar `docker compose up` localmente. Si choca con otra app,
-      # cambia el 5173 de la izquierda.
-      - "5173:80"
+    # No se publica ningun puerto en el host. Traefik enruta por la
+    # red Docker hacia el puerto 80 del contenedor (via el "Container
+    # Port" del dominio en Dokploy). Publicar un puerto fijo
+    # (p.ej. 5173:80) puede chocar con otras apps de Dokploy.
+    # Para probar localmente con docker compose up, agregar:
+    #   ports: ["5173:80"]
+    expose:
+      - 80
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
       interval: 30s
