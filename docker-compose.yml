@@ -73,10 +73,17 @@ services:
     # Arranque: migraciones -> seed -> servidor.
     # prisma/seed.js es idempotente (upsert + chequeo de existencia),
     # asi que es seguro ejecutarlo en cada deploy.
-    command: >
-      sh -c "npx prisma migrate deploy --schema prisma/schema.prisma
-             && node prisma/seed.js
-             && node backend/src/server.js"
+    #
+    # IMPORTANTE: se define como LISTA (argv explicita) y no como
+    # "command: >". Con el scalar ">" de YAML, las lineas mas
+    # indentadas conservan el salto de linea literal, sh recibia un
+    # "&&" al inicio de linea y moria con:
+    #   sh: syntax error: unexpected "&&"
+    # (el seed nunca llegaba a correr y el contenedor entraba en loop)
+    command:
+      - sh
+      - -c
+      - "npx prisma migrate deploy --schema prisma/schema.prisma && node prisma/seed.js && node backend/src/server.js"
     healthcheck:
       # GET /api/health ya existe en backend/src/routes/index.js
       test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
