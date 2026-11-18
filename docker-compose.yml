@@ -24,8 +24,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: waygo-backend
     restart: unless-stopped
     depends_on:
@@ -42,11 +42,11 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - waygo-uploads:/app/uploads
+      - waygo-uploads:/app/backend/uploads
     command: >
-      sh -c "npx prisma migrate deploy --schema ../prisma/schema.prisma
-             && node ../prisma/seed.js
-             && node src/server.js"
+      sh -c "npx prisma migrate deploy --schema prisma/schema.prisma
+             && node prisma/seed.js
+             && node backend/src/server.js"
 
   frontend:
     build:

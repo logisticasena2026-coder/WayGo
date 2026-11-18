@@ -80,18 +80,22 @@ npm install
 #    y extraer su carpeta "pgsql" como tools/postgresql/
 npm run db:start   # inicializa data/ la primera vez (ver docs/fase-1-informe.md)
 
-#    Opcion B) Docker
-docker compose up -d db
+#    Opcion B) Docker (despliegue completo: db + backend + frontend)
+#    1) Copiar .env.example a .env y completar DB_PASSWORD y secretos JWT
+#    2) Levantar todo:
+docker compose up -d --build
+#    Frontend en http://localhost:5173 (proxya /api al backend)
+#    El backend ejecuta migraciones + seed automaticamente al iniciar.
 
-# 3. Configurar variables
+# 3. Configurar variables (solo para ejecucion local SIN Docker)
 copy backend\.env.example backend\.env
 #    Editar backend/.env: DATABASE_URL, secretos JWT, etc.
 
-# 4. Migraciones y datos base
+# 4. Migraciones y datos base (local)
 npm run prisma:migrate
 npm run prisma:seed
 
-# 5. Ejecutar
+# 5. Ejecutar (local)
 npm run dev:backend
 npm run dev:frontend
 ```

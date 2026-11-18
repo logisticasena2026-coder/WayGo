@@ -118,6 +118,6 @@ frontend/src/pages/{ReviewsPage,StatsPage}.jsx  # estrellas + gráficos Recharts
 - Pasarela de pagos real (hoy `PaymentRecord` se crea como CASH/PAID al finalizar; no hay cobros reales por regla 13).
 - Nodemailer SMTP real para producción.
 - Swagger/OpenAPI.
-- Dockerfiles (referenciados en `docker-compose.yml`).
+- ~~Dockerfiles~~ (implementados: `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, `.dockerignore`).
 - Filtro de solicitudes por cercanía geográfica.
 - Aplicación móvil.

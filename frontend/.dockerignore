@@ -1,0 +1,5 @@
+# Contexto de build del frontend
+node_modules
+dist
+.env
+*.log

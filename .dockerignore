@@ -1,0 +1,12 @@
+# Contexto de build del backend (raiz del repositorio)
+node_modules
+**/node_modules
+.git
+tools
+docs
+tests
+.env
+**/.env
+backend/uploads
+frontend/dist
+*.log
