@@ -17,15 +17,37 @@ async function getActiveAssignment(driverId) {
 }
 
 async function getActiveForCustomer(customerId) {
-  return prisma.serviceAssignment.findFirst({
+  const assignment = await prisma.serviceAssignment.findFirst({
     where: { status: { in: ['ASSIGNED', 'DRIVER_EN_ROUTE', 'IN_SERVICE'] }, request: { customerId } },
     include: {
       request: true,
       vehicle: true,
-      driver: { select: { id: true, profile: { select: { firstName: true, lastName: true, photoUrl: true, phone: true } }, driverProfile: { select: { averageRating: true, totalTrips: true, lastLat: true, lastLng: true } } } },
+      driver: { select: { id: true, profile: { select: { firstName: true, lastName: true, photoUrl: true, phone: true } }, driverProfile: { select: { averageRating: true, totalTrips: true, lastLat: true, lastLng: true, lastLocationAt: true } } } },
     },
     orderBy: { createdAt: 'desc' },
   });
+  if (assignment) {
+    const tracking = await prisma.serviceTracking.findMany({
+      where: { requestId: assignment.requestId },
+      orderBy: { recordedAt: 'asc' },
+    });
+    assignment.tracking = tracking;
+  }
+  return assignment;
+}
+
+/** Obtiene el recorrido registrado de un servicio (puntos GPS) */
+async function getTracking(userId, requestId) {
+  const request = await prisma.serviceRequest.findUnique({ where: { id: requestId } });
+  if (!request) throw ApiError.notFound('Solicitud no encontrada');
+
+  const isOwner = request.customerId === userId;
+  const isDriver = await prisma.serviceAssignment.findFirst({ where: { requestId, driverId: userId } });
+  const isStaff = await prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { name: true } } } });
+  const allowed = isOwner || !!isDriver || ['ADMIN', 'CALL_CENTER'].includes(isStaff?.role?.name);
+  if (!allowed) throw ApiError.forbidden('No tienes acceso al recorrido de este servicio');
+
+  return prisma.serviceTracking.findMany({ where: { requestId }, orderBy: { recordedAt: 'asc' } });
 }
 
 async function assertDriverAssignment(driverId, assignmentId) {
@@ -131,4 +153,4 @@ async function completeService(driverId, assignmentId, { actualKm }, req) {
   return completed;
 }
 
-module.exports = { getActiveAssignment, getActiveForCustomer, driverArrived, startService, completeService };
+module.exports = { getActiveAssignment, getActiveForCustomer, getTracking, driverArrived, startService, completeService };

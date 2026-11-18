@@ -6,7 +6,7 @@ const prisma = require('../utils/prisma');
 const ApiError = require('../utils/apiError');
 const { removeByPublicUrl } = require('../middlewares/upload');
 const audit = require('../utils/audit');
-const { emitToRole } = require('../sockets');
+const { emitToRole, emitToUser } = require('../sockets');
 
 async function getDriverProfile(userId) {
   const driver = await prisma.driverProfile.findUnique({
@@ -151,6 +151,12 @@ async function updateLocation(userId, { lat, lng }, req) {
   if (!driver.locationConsent) throw ApiError.forbidden('No has autorizado el uso de tu ubicacion', 'LOCATION_NOT_CONSENTED');
   if (driver.operationalStatus === 'OFFLINE') throw ApiError.conflict('Activa tu disponibilidad para compartir ubicacion', 'DRIVER_OFFLINE');
 
+  // Servicio activo del conductor (para registrar el recorrido y avisar al cliente)
+  const active = await prisma.serviceAssignment.findFirst({
+    where: { driverId: userId, status: { in: ['ASSIGNED', 'DRIVER_EN_ROUTE', 'IN_SERVICE'] } },
+    select: { requestId: true, request: { select: { customerId: true } } },
+  });
+
   const now = new Date();
   const [updated] = await prisma.$transaction([
     prisma.driverProfile.update({
@@ -160,15 +166,29 @@ async function updateLocation(userId, { lat, lng }, req) {
     prisma.driverLocationShare.create({ data: { driverId: userId, lat, lng } }),
   ]);
 
-  // Emite la ubicacion al call center en tiempo real
-  emitToRole('CALL_CENTER', 'driver:location', {
+  // Guarda el punto de recorrido del servicio activo
+  if (active) {
+    await prisma.serviceTracking.create({
+      data: { requestId: active.requestId, lat, lng, source: 'driver_app' },
+    });
+  }
+
+  const payload = {
     userId,
     lat: updated.lastLat,
     lng: updated.lastLng,
     at: now.toISOString(),
-  });
+    requestId: active?.requestId || null,
+  };
 
-  return { lat: updated.lastLat, lng: updated.lastLng, at: now };
+  // Emite al call center en tiempo real
+  emitToRole('CALL_CENTER', 'driver:location', payload);
+  // Y al cliente del servicio activo
+  if (active?.request.customerId) {
+    emitToUser(active.request.customerId, 'driver:location', payload);
+  }
+
+  return { lat: updated.lastLat, lng: updated.lastLng, at: now, requestId: active?.requestId || null };
 }
 
 module.exports = {

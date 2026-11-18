@@ -14,6 +14,11 @@ const myActiveAsCustomer = catchAsync(async (req, res) => {
   res.json({ assignment });
 });
 
+const tracking = catchAsync(async (req, res) => {
+  const points = await assignmentService.getTracking(req.user.id, req.params.id);
+  res.json({ points });
+});
+
 const arrive = catchAsync(async (req, res) => {
   await assignmentService.driverArrived(req.user.id, req.params.id, req);
   res.json({ message: 'Llegada registrada' });
@@ -29,4 +34,4 @@ const complete = catchAsync(async (req, res) => {
   res.json({ message: 'Servicio finalizado' });
 });
 
-module.exports = { myActive, myActiveAsCustomer, arrive, start, complete };
+module.exports = { myActive, myActiveAsCustomer, tracking, arrive, start, complete };

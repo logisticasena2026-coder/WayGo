@@ -20,4 +20,7 @@ router.post('/:id/complete', requireRole('DRIVER'), [body('actualKm').optional()
 // Cliente: seguimiento de su servicio activo
 router.get('/active-as-customer', requireRole('CUSTOMER'), ctrl.myActiveAsCustomer);
 
+// Recorrido registrado de un servicio (dueño, conductor o staff)
+router.get('/:id/tracking', ctrl.tracking);
+
 module.exports = router;
