@@ -103,7 +103,7 @@ export default function ProfilePage() {
         </div>
 
         <form onSubmit={save}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="wg-form-grid">
             <div className="wg-field">
               <label>Nombre</label>
               <input className="wg-input" value={form.firstName} onChange={set('firstName')} />
@@ -138,12 +138,12 @@ export default function ProfilePage() {
               <label>Fecha de nacimiento</label>
               <input className="wg-input" type="date" value={form.birthDate} onChange={set('birthDate')} />
             </div>
+            <div className="wg-field wg-form-grid--full">
+              <label>Direccion</label>
+              <input className="wg-input" value={form.address} onChange={set('address')} />
+            </div>
           </div>
-          <div className="wg-field">
-            <label>Direccion</label>
-            <input className="wg-input" value={form.address} onChange={set('address')} />
-          </div>
-          <button type="submit" className="wg-btn wg-btn--primary" disabled={saving}>
+          <button type="submit" className="wg-btn wg-btn--primary wg-mt" disabled={saving}>
             {saving ? 'Guardando...' : 'Guardar cambios'}
           </button>
         </form>

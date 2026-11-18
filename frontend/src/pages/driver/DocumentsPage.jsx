@@ -72,11 +72,11 @@ export default function DocumentsPage() {
         <div className="wg-card">
           <h2 style={{ marginBottom: 16 }}>Licencia de conduccion</h2>
           <form onSubmit={saveLicense}>
-            <div className="wg-field">
-              <label>Numero de licencia</label>
-              <input className="wg-input" value={license.licenseNumber} onChange={(e) => setLicense({ ...license, licenseNumber: e.target.value })} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="wg-form-grid">
+              <div className="wg-field wg-form-grid--half">
+                <label>Numero de licencia</label>
+                <input className="wg-input" value={license.licenseNumber} onChange={(e) => setLicense({ ...license, licenseNumber: e.target.value })} />
+              </div>
               <div className="wg-field">
                 <label>Categoria (B1, C2...)</label>
                 <input className="wg-input" value={license.licenseCategory} onChange={(e) => setLicense({ ...license, licenseCategory: e.target.value })} />
@@ -86,7 +86,7 @@ export default function DocumentsPage() {
                 <input className="wg-input" type="date" value={license.licenseExpiresAt} onChange={(e) => setLicense({ ...license, licenseExpiresAt: e.target.value })} />
               </div>
             </div>
-            <button type="submit" className="wg-btn wg-btn--primary" disabled={saving}>Guardar licencia</button>
+            <button type="submit" className="wg-btn wg-btn--primary wg-mt" disabled={saving}>Guardar licencia</button>
           </form>
         </div>
 

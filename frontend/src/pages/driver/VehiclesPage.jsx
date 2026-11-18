@@ -66,7 +66,7 @@ export default function VehiclesPage() {
         <div className="wg-card">
           <h2 style={{ marginBottom: 16 }}>{editing ? 'Editar vehiculo' : 'Registrar vehiculo'}</h2>
           <form onSubmit={submit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="wg-form-grid">
               <div className="wg-field">
                 <label>Placa</label>
                 <input className="wg-input" value={form.plate} onChange={set('plate')} placeholder="ABC123" maxLength={6} disabled={!!editing} />

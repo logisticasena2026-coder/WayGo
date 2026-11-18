@@ -5,6 +5,9 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../../services/admin.service'
 import { apiErrorMessage } from '../../services/api'
 import { StatusBadge, STATUS_MAP, EmptyState } from '../../components/StatusBadge'
+import ViewSwitcher from '../../components/ViewSwitcher'
+import StatusBoard from '../../components/StatusBoard'
+import TimelineView from '../../components/TimelineView'
 
 const ROLE_LABEL = { ADMIN: 'Administrador', CUSTOMER: 'Cliente', DRIVER: 'Conductor', CALL_CENTER: 'Call Center' }
 
@@ -13,6 +16,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState([])
   const [total, setTotal] = useState(0)
   const [msg, setMsg] = useState(null)
+  const [view, setView] = useState('list')
 
   const load = async () => {
     const params = {}
@@ -64,41 +68,92 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="wg-card">
-        <h2 style={{ marginBottom: 16 }}>Usuarios ({total})</h2>
-        {users.length === 0 && <EmptyState icon="👥" title="Sin resultados" />}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--wg-gray-400)', borderBottom: '2px solid var(--wg-gray-200)' }}>
-                <th style={{ padding: 10 }}>Usuario</th>
-                <th style={{ padding: 10 }}>Rol</th>
-                <th style={{ padding: 10 }}>Estado</th>
-                <th style={{ padding: 10 }}>Registro</th>
-                <th style={{ padding: 10 }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id} style={{ borderBottom: '1px solid var(--wg-gray-100)' }}>
-                  <td style={{ padding: 10 }}>
-                    <strong>{u.profile?.firstName} {u.profile?.lastName}</strong>
-                    <div className="wg-muted" style={{ fontSize: 12 }}>{u.email}</div>
-                  </td>
-                  <td style={{ padding: 10 }}>{ROLE_LABEL[u.role.name]}</td>
-                  <td style={{ padding: 10 }}><StatusBadge value={u.status} map={STATUS_MAP} /></td>
-                  <td style={{ padding: 10 }} className="wg-muted">{new Date(u.createdAt).toLocaleDateString('es-CO')}</td>
-                  <td style={{ padding: 10 }}>
-                    {u.status !== 'DELETED' && (
-                      <button className="wg-btn wg-btn--outline" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => toggleStatus(u)}>
-                        {u.status === 'BLOCKED' ? 'Habilitar' : 'Bloquear'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <h2>Usuarios ({total})</h2>
+          <ViewSwitcher value={view} onChange={setView} />
         </div>
+        {users.length === 0 && <EmptyState icon="👥" title="Sin resultados" />}
+
+        {view === 'list' && (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="wg-table">
+              <thead>
+                <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Registro</th><th>Acciones</th></tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      <strong>{u.profile?.firstName} {u.profile?.lastName}</strong>
+                      <div className="wg-muted" style={{ fontSize: 12 }}>{u.email}</div>
+                    </td>
+                    <td>{ROLE_LABEL[u.role.name]}</td>
+                    <td><StatusBadge value={u.status} map={STATUS_MAP} /></td>
+                    <td className="wg-muted">{new Date(u.createdAt).toLocaleDateString('es-CO')}</td>
+                    <td>
+                      {u.status !== 'DELETED' && (
+                        <button className="wg-btn wg-btn--outline" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => toggleStatus(u)}>
+                          {u.status === 'BLOCKED' ? 'Habilitar' : 'Bloquear'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {view === 'grid' && (
+          <div className="wg-grid" style={{ gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {users.map((u) => (
+              <div key={u.id} className="wg-card" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>{u.profile?.firstName} {u.profile?.lastName}</strong>
+                  <StatusBadge value={u.status} map={STATUS_MAP} />
+                </div>
+                <div className="wg-muted" style={{ fontSize: 12, marginTop: 4 }}>{u.email}</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>{ROLE_LABEL[u.role.name]}</div>
+                <div className="wg-muted" style={{ fontSize: 12 }}>Desde {new Date(u.createdAt).toLocaleDateString('es-CO')}</div>
+                {u.status !== 'DELETED' && (
+                  <button className="wg-btn wg-btn--outline wg-btn--block wg-mt" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => toggleStatus(u)}>
+                    {u.status === 'BLOCKED' ? 'Habilitar' : 'Bloquear'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {view === 'canvas' && (
+          <StatusBoard
+            items={users}
+            statusMap={{ ACTIVE: { label: 'Activos' }, BLOCKED: { label: 'Bloqueados' }, PENDING_VERIFICATION: { label: 'Pendientes' }, DELETED: { label: 'Eliminados' } }}
+            renderItem={(u) => (
+              <div>
+                <strong style={{ fontSize: 14 }}>{u.profile?.firstName} {u.profile?.lastName}</strong>
+                <div className="wg-muted" style={{ fontSize: 12 }}>{u.email}</div>
+                <div style={{ fontSize: 12, marginTop: 2 }}>{ROLE_LABEL[u.role.name]}</div>
+              </div>
+            )}
+          />
+        )}
+
+        {view === 'timeline' && (
+          <TimelineView
+            items={users}
+            getDate={(u) => new Date(u.createdAt)}
+            renderItem={(u) => (
+              <div className="wg-card" style={{ padding: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <strong style={{ fontSize: 13 }}>{u.profile?.firstName} {u.profile?.lastName}</strong>
+                  <StatusBadge value={u.status} map={STATUS_MAP} />
+                </div>
+                <div className="wg-muted" style={{ fontSize: 12, marginTop: 3 }}>{u.email} · {ROLE_LABEL[u.role.name]}</div>
+              </div>
+            )}
+          />
+        )}
       </div>
     </div>
   )

@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { serviceService } from '../../services/service.service'
 import { apiErrorMessage } from '../../services/api'
+import AddressInput from '../../components/AddressInput'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -22,6 +23,9 @@ export default function RequestServicePage() {
   const [saving, setSaving] = useState(false)
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const setAddress = (prefix) => ({ address, lat, lng }) =>
+    setForm((f) => ({ ...f, [`${prefix}Address`]: address, [`${prefix}Lat`]: lat ?? '', [`${prefix}Lng`]: lng ?? '' }))
 
   const submit = async (e) => {
     e.preventDefault()
@@ -45,13 +49,8 @@ export default function RequestServicePage() {
     } finally { setSaving(false) }
   }
 
-  const coordFields = [
-    { lat: 'pickupLat', lng: 'pickupLng' },
-    { lat: 'dropoffLat', lng: 'dropoffLng' },
-  ]
-
   return (
-    <div className="wg-card" style={{ maxWidth: 760 }}>
+    <div className="wg-card" style={{ maxWidth: 980 }}>
       <h2 style={{ marginBottom: 6 }}>Solicitar un servicio</h2>
       <p className="wg-muted" style={{ fontSize: 14, marginBottom: 20 }}>
         Indica origen, destino, fecha y hora, y el precio que estas dispuesto a pagar. Los conductores podran aceptarlo o contraofertar.
@@ -59,28 +58,28 @@ export default function RequestServicePage() {
       {err && <div className="wg-alert wg-alert--error">{err}</div>}
 
       <form onSubmit={submit}>
-        <h3 style={{ fontSize: 15, marginBottom: 10 }}>Lugar de recogida</h3>
-        <div className="wg-field">
-          <label>Direccion de origen *</label>
-          <input className="wg-input" value={form.pickupAddress} onChange={set('pickupAddress')} placeholder="Ej: Calle 100 # 11-22, Bogota" required />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="wg-field"><label>Latitud (opcional)</label><input className="wg-input" value={form.pickupLat} onChange={set('pickupLat')} placeholder="4.6814" /></div>
-          <div className="wg-field"><label>Longitud (opcional)</label><input className="wg-input" value={form.pickupLng} onChange={set('pickupLng')} placeholder="-74.0464" /></div>
-        </div>
+        <div className="wg-form-grid">
+          <div className="wg-form-grid--half">
+            <AddressInput
+              label="Direccion de origen *"
+              value={form.pickupAddress}
+              lat={form.pickupLat}
+              lng={form.pickupLng}
+              onChange={setAddress('pickup')}
+              placeholder="Ej: Calle 100 # 11-22, Bogota"
+            />
+          </div>
+          <div className="wg-form-grid--half">
+            <AddressInput
+              label="Direccion de destino *"
+              value={form.dropoffAddress}
+              lat={form.dropoffLat}
+              lng={form.dropoffLng}
+              onChange={setAddress('dropoff')}
+              placeholder="Ej: Aeropuerto El Dorado"
+            />
+          </div>
 
-        <h3 style={{ fontSize: 15, margin: '18px 0 10px' }}>Destino</h3>
-        <div className="wg-field">
-          <label>Direccion de destino *</label>
-          <input className="wg-input" value={form.dropoffAddress} onChange={set('dropoffAddress')} placeholder="Ej: Aeropuerto El Dorado" required />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="wg-field"><label>Latitud (opcional)</label><input className="wg-input" value={form.dropoffLat} onChange={set('dropoffLat')} placeholder="4.7016" /></div>
-          <div className="wg-field"><label>Longitud (opcional)</label><input className="wg-input" value={form.dropoffLng} onChange={set('dropoffLng')} placeholder="-74.1469" /></div>
-        </div>
-
-        <h3 style={{ fontSize: 15, margin: '18px 0 10px' }}>Programacion y precio</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           <div className="wg-field">
             <label>Fecha *</label>
             <input className="wg-input" type="date" min={today()} value={form.scheduledDate} onChange={set('scheduledDate')} required />
@@ -97,14 +96,14 @@ export default function RequestServicePage() {
             <label>Precio propuesto (COP) *</label>
             <input className="wg-input" type="number" min="1" step="1000" value={form.proposedPrice} onChange={set('proposedPrice')} placeholder="45000" required />
           </div>
+
+          <div className="wg-field wg-form-grid--full">
+            <label>Observaciones</label>
+            <textarea className="wg-input" rows="3" value={form.observations} onChange={set('observations')} placeholder="Detalles adicionales, puntos de referencia..." />
+          </div>
         </div>
 
-        <div className="wg-field">
-          <label>Observaciones</label>
-          <textarea className="wg-input" rows="3" value={form.observations} onChange={set('observations')} placeholder="Detalles adicionales, puntos de referencia..." />
-        </div>
-
-        <button type="submit" className="wg-btn wg-btn--primary wg-btn--block" disabled={saving}>
+        <button type="submit" className="wg-btn wg-btn--primary wg-btn--block wg-mt" disabled={saving}>
           {saving ? 'Publicando...' : 'Publicar solicitud'}
         </button>
       </form>

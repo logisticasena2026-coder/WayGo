@@ -1,7 +1,7 @@
 // ============================================================
 // WayGo - Inicio del conductor: estado operativo y resumen
 // ============================================================
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { driverService } from '../../services/driver.service'
 import { apiErrorMessage } from '../../services/api'
 import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
@@ -11,10 +11,48 @@ export default function DriverHome() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [gpsOn, setGpsOn] = useState(false)
+  const watchRef = useRef(null)
 
   const load = () => driverService.getProfile().then((d) => { setDriver(d); setLoading(false) })
 
   useEffect(() => { load().catch(() => setLoading(false)) }, [])
+
+  useEffect(() => () => stopGps(), [])
+
+  const stopGps = () => {
+    if (watchRef.current) { navigator.geolocation.clearWatch(watchRef.current); watchRef.current = null }
+    setGpsOn(false)
+  }
+
+  const startGps = async () => {
+    setMsg(null)
+    if (!navigator.geolocation) return setMsg({ type: 'error', text: 'Tu navegador no soporta geolocalizacion' })
+    try {
+      await driverService.setLocationConsent(true)
+      watchRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          driverService.updateLocation(pos.coords.latitude, pos.coords.longitude).catch(() => {})
+        },
+        () => setMsg({ type: 'error', text: 'No se pudo obtener tu ubicacion' }),
+        { enableHighAccuracy: true, maximumAge: 3000 }
+      )
+      setGpsOn(true)
+      setMsg({ type: 'success', text: 'Compartiendo ubicacion en vivo' })
+    } catch (e) {
+      setMsg({ type: 'error', text: apiErrorMessage(e, 'No se pudo activar el GPS') })
+    }
+  }
+
+  const toggleGps = async () => {
+    if (gpsOn) {
+      stopGps()
+      await driverService.setLocationConsent(false).catch(() => {})
+      setMsg({ type: 'info', text: 'Ubicacion en vivo desactivada' })
+    } else {
+      await startGps()
+    }
+  }
 
   const toggleStatus = async () => {
     setBusy(true); setMsg(null)
@@ -23,6 +61,7 @@ export default function DriverHome() {
       const res = await driverService.setStatus(next)
       setDriver((d) => ({ ...d, operationalStatus: res.operationalStatus }))
       setMsg({ type: 'success', text: next === 'AVAILABLE' ? 'Ahora estas DISPONIBLE' : 'Te has DESCONECTADO' })
+      if (next === 'OFFLINE') stopGps()
     } catch (e) {
       setMsg({ type: 'error', text: apiErrorMessage(e, 'No se pudo cambiar el estado') })
     } finally { setBusy(false) }
@@ -49,14 +88,24 @@ export default function DriverHome() {
             {status === 'BUSY' && 'Tienes un servicio en curso.'}
           </p>
         </div>
-        <button
-          type="button"
-          className={`wg-btn ${status === 'AVAILABLE' ? 'wg-btn--outline' : 'wg-btn--primary'}`}
-          disabled={busy || !canConnect || status === 'BUSY'}
-          onClick={toggleStatus}
-        >
-          {status === 'AVAILABLE' ? 'Desconectarme' : 'Conectarme'}
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`wg-btn ${gpsOn ? 'wg-btn--outline' : 'wg-btn--primary'}`}
+            disabled={status !== 'AVAILABLE'}
+            onClick={toggleGps}
+          >
+            {gpsOn ? '📡 Dejar de compartir GPS' : '📡 Compartir ubicacion en vivo'}
+          </button>
+          <button
+            type="button"
+            className={`wg-btn ${status === 'AVAILABLE' ? 'wg-btn--outline' : 'wg-btn--primary'}`}
+            disabled={busy || !canConnect || status === 'BUSY'}
+            onClick={toggleStatus}
+          >
+            {status === 'AVAILABLE' ? 'Desconectarme' : 'Conectarme'}
+          </button>
+        </div>
       </div>
 
       {!canConnect && (

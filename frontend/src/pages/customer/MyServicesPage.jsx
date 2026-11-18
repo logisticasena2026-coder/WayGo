@@ -7,6 +7,11 @@ import { serviceService } from '../../services/service.service'
 import { apiErrorMessage } from '../../services/api'
 import { StatusBadge, STATUS_MAP, EmptyState } from '../../components/StatusBadge'
 import { useNotifications } from '../../hooks/useNotifications'
+import ViewSwitcher from '../../components/ViewSwitcher'
+import StatusBoard from '../../components/StatusBoard'
+import TimelineView from '../../components/TimelineView'
+import GanttView from '../../components/GanttView'
+import { dateFromSchedule } from '../../utils/dates'
 
 const REQUEST_STATUS = {
   DRAFT: { label: 'Borrador', tone: 'info' },
@@ -28,6 +33,7 @@ export default function MyServicesPage() {
   const [requests, setRequests] = useState(null)
   const [selected, setSelected] = useState(null)
   const [msg, setMsg] = useState(location.state?.message || null)
+  const [view, setView] = useState('grid')
   const { notifications } = useNotifications()
 
   const load = () => serviceService.listMine().then(setRequests).catch(() => setRequests([]))
@@ -69,20 +75,89 @@ export default function MyServicesPage() {
 
       <div className="wg-grid wg-grid--2">
         <div className="wg-card">
-          <h2 style={{ marginBottom: 16 }}>Mis solicitudes ({requests.length})</h2>
-          {requests.length === 0 && <EmptyState icon="📋" title="Aun no tienes solicitudes" text="Crea una solicitud para comenzar." />}
-          <div className="wg-grid" style={{ gap: 12 }}>
-            {requests.map((r) => (
-              <button key={r.id} onClick={() => open(r.id)} className="wg-card" style={{ textAlign: 'left', cursor: 'pointer', padding: 16, border: 'none', fontFamily: 'inherit', background: '#fff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong>#{r.requestNumber} · {r.serviceType.name}</strong>
-                  <StatusBadge value={r.status} map={REQUEST_STATUS} />
-                </div>
-                <div className="wg-muted" style={{ fontSize: 13, marginTop: 4 }}>{r.pickupAddress} → {r.dropoffAddress}</div>
-                <div className="wg-muted" style={{ fontSize: 13 }}>{new Date(r.scheduledDate).toLocaleDateString('es-CO')} {r.scheduledTime} · {Number(r.proposedPrice).toLocaleString('es-CO')} COP · {r.offers.length} oferta(s)</div>
-              </button>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <h2>Mis solicitudes ({requests.length})</h2>
+            <ViewSwitcher value={view} onChange={setView} />
           </div>
+          {requests.length === 0 && <EmptyState icon="📋" title="Aun no tienes solicitudes" text="Crea una solicitud para comenzar." />}
+
+          {view === 'grid' && (
+            <div className="wg-grid" style={{ gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+              {requests.map((r) => (
+                <button key={r.id} onClick={() => open(r.id)} className="wg-card" style={{ textAlign: 'left', cursor: 'pointer', padding: 16, border: 'none', fontFamily: 'inherit', background: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong>#{r.requestNumber} · {r.serviceType.name}</strong>
+                    <StatusBadge value={r.status} map={REQUEST_STATUS} />
+                  </div>
+                  <div className="wg-muted" style={{ fontSize: 13, marginTop: 4 }}>{r.pickupAddress} → {r.dropoffAddress}</div>
+                  <div className="wg-muted" style={{ fontSize: 13 }}>{new Date(r.scheduledDate).toLocaleDateString('es-CO')} {r.scheduledTime} · {Number(r.proposedPrice).toLocaleString('es-CO')} COP · {r.offers.length} oferta(s)</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {view === 'list' && (
+            <table className="wg-table">
+              <thead>
+                <tr><th>#</th><th>Tipo</th><th>Recorrido</th><th>Fecha/Hora</th><th>Precio</th><th>Ofertas</th><th>Estado</th></tr>
+              </thead>
+              <tbody>
+                {requests.map((r) => (
+                  <tr key={r.id} onClick={() => open(r.id)} style={{ cursor: 'pointer' }}>
+                    <td>{r.requestNumber}</td>
+                    <td>{r.serviceType.name}</td>
+                    <td className="wg-muted">{r.pickupAddress} → {r.dropoffAddress}</td>
+                    <td className="wg-muted">{new Date(r.scheduledDate).toLocaleDateString('es-CO')} {r.scheduledTime}</td>
+                    <td>${Number(r.proposedPrice).toLocaleString('es-CO')}</td>
+                    <td>{r.offers.length}</td>
+                    <td><StatusBadge value={r.status} map={REQUEST_STATUS} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {view === 'canvas' && (
+            <StatusBoard
+              items={requests}
+              statusMap={REQUEST_STATUS}
+              onItemClick={(r) => open(r.id)}
+              renderItem={(r) => (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: 14 }}>#{r.requestNumber}</strong>
+                    <span className="wg-muted" style={{ fontSize: 12 }}>{r.offers.length} ofertas</span>
+                  </div>
+                  <div className="wg-muted" style={{ fontSize: 12, marginTop: 4 }}>{r.pickupAddress} → {r.dropoffAddress}</div>
+                  <div className="wg-muted" style={{ fontSize: 12 }}>{new Date(r.scheduledDate).toLocaleDateString('es-CO')} {r.scheduledTime}</div>
+                </div>
+              )}
+            />
+          )}
+
+          {view === 'timeline' && (
+            <TimelineView
+              items={requests}
+              getDate={(r) => dateFromSchedule(r.scheduledDate, r.scheduledTime)}
+              renderItem={(r) => (
+                <div className="wg-card" style={{ padding: 12, cursor: 'pointer' }} onClick={() => open(r.id)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontSize: 13 }}>#{r.requestNumber} · {r.serviceType.name}</strong>
+                    <StatusBadge value={r.status} map={REQUEST_STATUS} />
+                  </div>
+                  <div className="wg-muted" style={{ fontSize: 12, marginTop: 3 }}>{r.pickupAddress} → {r.dropoffAddress}</div>
+                </div>
+              )}
+            />
+          )}
+
+          {view === 'gantt' && (
+            <GanttView
+              items={requests}
+              getStart={(r) => dateFromSchedule(r.scheduledDate, r.scheduledTime)}
+              renderLabel={(r) => `#${r.requestNumber} ${r.serviceType.name}`}
+            />
+          )}
         </div>
 
         <div className="wg-card">

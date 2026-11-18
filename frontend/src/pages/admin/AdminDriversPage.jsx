@@ -5,6 +5,9 @@ import { useEffect, useState } from 'react'
 import { adminService } from '../../services/admin.service'
 import { apiErrorMessage } from '../../services/api'
 import { StatusBadge, STATUS_MAP, EmptyState } from '../../components/StatusBadge'
+import ViewSwitcher from '../../components/ViewSwitcher'
+import StatusBoard from '../../components/StatusBoard'
+import TimelineView from '../../components/TimelineView'
 
 const DOC_LABEL = { LICENCIA: 'Licencia', CEDULA: 'Cedula', ANTECEDENTES: 'Antecedentes', SEGURO: 'Seguro', OTRO: 'Otro' }
 const VEH_DOC_LABEL = { SOAT: 'SOAT', TECNOMECANICA: 'Tecnomecanica', TARJETA_PROPIEDAD: 'Tarjeta de propiedad', OTRO: 'Otro' }
@@ -16,6 +19,7 @@ export default function AdminDriversPage() {
   const [selected, setSelected] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [msg, setMsg] = useState(null)
+  const [view, setView] = useState('grid')
 
   const load = async () => {
     const res = await adminService.listDrivers({ status: filter === 'ALL' ? undefined : filter, pageSize: 50 })
@@ -61,22 +65,78 @@ export default function AdminDriversPage() {
 
       <div className="wg-grid wg-grid--2">
         <div className="wg-card">
-          <h2 style={{ marginBottom: 16 }}>Conductores ({total})</h2>
-          {drivers.length === 0 && <EmptyState icon="🚗" title="Sin conductores" text="No hay conductores en este filtro." />}
-          <div className="wg-grid" style={{ gap: 12 }}>
-            {drivers.map((d) => (
-              <button key={d.id} onClick={() => open(d.id)} className="wg-card" style={{ textAlign: 'left', cursor: 'pointer', padding: 16, border: 'none', fontFamily: 'inherit', background: '#fff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong>{d.user.profile.firstName} {d.user.profile.lastName}</strong>
-                  <StatusBadge value={d.verificationStatus} map={STATUS_MAP} />
-                </div>
-                <div className="wg-muted" style={{ fontSize: 13 }}>{d.user.email}</div>
-                <div className="wg-muted" style={{ fontSize: 13 }}>
-                  Docs: {d.documents.length} · Vehiculos: {d.vehicles.length}
-                </div>
-              </button>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <h2>Conductores ({total})</h2>
+            <ViewSwitcher value={view} onChange={setView} />
           </div>
+          {drivers.length === 0 && <EmptyState icon="🚗" title="Sin conductores" text="No hay conductores en este filtro." />}
+
+          {view === 'grid' && (
+            <div className="wg-grid" style={{ gap: 12 }}>
+              {drivers.map((d) => (
+                <button key={d.id} onClick={() => open(d.id)} className="wg-card" style={{ textAlign: 'left', cursor: 'pointer', padding: 16, border: 'none', fontFamily: 'inherit', background: '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong>{d.user.profile.firstName} {d.user.profile.lastName}</strong>
+                    <StatusBadge value={d.verificationStatus} map={STATUS_MAP} />
+                  </div>
+                  <div className="wg-muted" style={{ fontSize: 13 }}>{d.user.email}</div>
+                  <div className="wg-muted" style={{ fontSize: 13 }}>
+                    Docs: {d.documents.length} · Vehiculos: {d.vehicles.length}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {view === 'list' && (
+            <table className="wg-table">
+              <thead>
+                <tr><th>Conductor</th><th>Email</th><th>Docs</th><th>Vehiculos</th><th>Estado</th></tr>
+              </thead>
+              <tbody>
+                {drivers.map((d) => (
+                  <tr key={d.id} onClick={() => open(d.id)} style={{ cursor: 'pointer' }}>
+                    <td><strong>{d.user.profile.firstName} {d.user.profile.lastName}</strong></td>
+                    <td className="wg-muted">{d.user.email}</td>
+                    <td>{d.documents.length}</td>
+                    <td>{d.vehicles.length}</td>
+                    <td><StatusBadge value={d.verificationStatus} map={STATUS_MAP} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {view === 'canvas' && (
+            <StatusBoard
+              items={drivers}
+              statusMap={{ PENDING: { label: 'Pendientes' }, APPROVED: { label: 'Aprobados' }, REJECTED: { label: 'Rechazados' } }}
+              getStatus={(d) => d.verificationStatus}
+              onItemClick={(d) => open(d.id)}
+              renderItem={(d) => (
+                <div>
+                  <strong style={{ fontSize: 14 }}>{d.user.profile.firstName} {d.user.profile.lastName}</strong>
+                  <div className="wg-muted" style={{ fontSize: 12 }}>{d.user.email}</div>
+                </div>
+              )}
+            />
+          )}
+
+          {view === 'timeline' && (
+            <TimelineView
+              items={drivers}
+              getDate={(d) => new Date(d.createdAt)}
+              renderItem={(d) => (
+                <div className="wg-card" style={{ padding: 12, cursor: 'pointer' }} onClick={() => open(d.id)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontSize: 13 }}>{d.user.profile.firstName} {d.user.profile.lastName}</strong>
+                    <StatusBadge value={d.verificationStatus} map={STATUS_MAP} />
+                  </div>
+                  <div className="wg-muted" style={{ fontSize: 12, marginTop: 3 }}>{d.user.email}</div>
+                </div>
+              )}
+            />
+          )}
         </div>
 
         <div className="wg-card">

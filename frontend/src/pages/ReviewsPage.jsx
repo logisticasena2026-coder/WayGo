@@ -7,6 +7,8 @@ import { serviceService } from '../services/service.service'
 import api, { apiErrorMessage } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { EmptyState } from '../components/StatusBadge'
+import ViewSwitcher from '../components/ViewSwitcher'
+import TimelineView from '../components/TimelineView'
 
 const CRITERIA_LABELS = {
   PUNCTUALITY: 'Puntualidad', PRESENTATION: 'Presentacion personal', KINDNESS: 'Amabilidad',
@@ -25,6 +27,7 @@ export default function ReviewsPage() {
   const [scores, setScores] = useState({})
   const [comment, setComment] = useState('')
   const [msg, setMsg] = useState(null)
+  const [view, setView] = useState('grid')
 
   const load = async () => {
     try {
@@ -101,19 +104,57 @@ export default function ReviewsPage() {
         </div>
 
         <div className="wg-card">
-          <h2 style={{ marginBottom: 16 }}>Evaluaciones recibidas ({received.length})</h2>
-          {received.length === 0 && <EmptyState icon="💬" title="Sin evaluaciones" />}
-          <div className="wg-grid" style={{ gap: 12 }}>
-            {received.map((r) => (
-              <div key={r.id} className="wg-card" style={{ padding: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="wg-muted" style={{ fontSize: 13 }}>{r.reviewer?.profile?.firstName} {r.reviewer?.profile?.lastName}</span>
-                  <strong style={{ color: 'var(--wg-warning)' }}>{'★'.repeat(Math.round(Number(r.overall)))}</strong>
-                </div>
-                {r.comment && <p style={{ fontSize: 13, marginTop: 4 }}>“{r.comment}”</p>}
-              </div>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <h2>Evaluaciones recibidas ({received.length})</h2>
+            <ViewSwitcher value={view} onChange={setView} />
           </div>
+          {received.length === 0 && <EmptyState icon="💬" title="Sin evaluaciones" />}
+
+          {view === 'grid' && (
+            <div className="wg-grid" style={{ gap: 12 }}>
+              {received.map((r) => (
+                <div key={r.id} className="wg-card" style={{ padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="wg-muted" style={{ fontSize: 13 }}>{r.reviewer?.profile?.firstName} {r.reviewer?.profile?.lastName}</span>
+                    <strong style={{ color: 'var(--wg-warning)' }}>{'★'.repeat(Math.round(Number(r.overall)))}</strong>
+                  </div>
+                  {r.comment && <p style={{ fontSize: 13, marginTop: 4 }}>“{r.comment}”</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {view === 'list' && (
+            <table className="wg-table">
+              <thead><tr><th>De</th><th>Servicio</th><th>Calificacion</th><th>Comentario</th></tr></thead>
+              <tbody>
+                {received.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.reviewer?.profile?.firstName} {r.reviewer?.profile?.lastName}</td>
+                    <td className="wg-muted">#{r.request?.requestNumber}</td>
+                    <td style={{ color: 'var(--wg-warning)' }}>{'★'.repeat(Math.round(Number(r.overall)))}</td>
+                    <td className="wg-muted">{r.comment}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {view === 'timeline' && (
+            <TimelineView
+              items={received}
+              getDate={(r) => new Date(r.createdAt)}
+              renderItem={(r) => (
+                <div className="wg-card" style={{ padding: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontSize: 13 }}>{r.reviewer?.profile?.firstName} {r.reviewer?.profile?.lastName}</strong>
+                    <span style={{ color: 'var(--wg-warning)' }}>{'★'.repeat(Math.round(Number(r.overall)))}</span>
+                  </div>
+                  {r.comment && <p style={{ fontSize: 12, marginTop: 3 }}>“{r.comment}”</p>}
+                </div>
+              )}
+            />
+          )}
         </div>
       </div>
 

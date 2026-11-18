@@ -12,6 +12,7 @@ const MENU_BY_ROLE = {
     { to: '/panel/solicitar', label: 'Solicitar servicio', icon: '🚗' },
     { to: '/panel/ofertas', label: 'Ofertas recibidas', icon: '💬' },
     { to: '/panel/servicios', label: 'Mis servicios', icon: '📋' },
+    { to: '/panel/seguimiento', label: 'Seguimiento', icon: '🗺️' },
     { section: 'Cuenta' },
     { to: '/panel/enviar-paquete', label: 'Enviar paquete', icon: '📦' },
     { to: '/panel/paquetes', label: 'Mis paquetes', icon: '📋' },

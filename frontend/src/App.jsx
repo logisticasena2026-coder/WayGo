@@ -32,6 +32,7 @@ import MyPackagesPage from './pages/customer/MyPackagesPage'
 import DriverPackagesPage from './pages/driver/DriverPackagesPage'
 import ContractsPage from './pages/customer/ContractsPage'
 import TrackingPage from './pages/TrackingPage'
+import ServiceTrackingPage from './pages/customer/ServiceTrackingPage'
 import ReviewsPage from './pages/ReviewsPage'
 import StatsPage from './pages/StatsPage'
 
@@ -71,6 +72,7 @@ export default function App() {
                 <Route path="solicitar" element={<RequestServicePage />} />
                 <Route path="servicios" element={<MyServicesPage />} />
                 <Route path="ofertas" element={<MyServicesPage />} />
+                <Route path="seguimiento" element={<ServiceTrackingPage />} />
                 <Route path="paquetes" element={<MyPackagesPage />} />
                 <Route path="enviar-paquete" element={<PackageRequestPage />} />
                 <Route path="contratos" element={<ContractsPage />} />

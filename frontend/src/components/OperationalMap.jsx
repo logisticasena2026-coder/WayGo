@@ -2,7 +2,7 @@
 // WayGo - Mapa operativo (Leaflet + OpenStreetMap)
 // Muestra conductores activos y solicitudes (origen/destino)
 // ============================================================
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const BOGOTA = [4.6097, -74.0817]
@@ -43,6 +43,12 @@ export default function OperationalMap({ drivers = [], requests = [], onDriverCl
 
       {requests.map((r) => (
         <span key={`r-${r.id}`}>
+          {r.pickup?.lat && r.pickup?.lng && r.dropoff?.lat && r.dropoff?.lng && (
+            <Polyline
+              positions={[[r.pickup.lat, r.pickup.lng], [r.dropoff.lat, r.dropoff.lng]]}
+              pathOptions={{ color: STATUS_COLOR[r.status] || '#3b82f6', weight: 2, opacity: 0.5, dashArray: '5 5' }}
+            />
+          )}
           {r.pickup?.lat && r.pickup?.lng && (
             <CircleMarker center={[r.pickup.lat, r.pickup.lng]} radius={6}
               pathOptions={{ color: STATUS_COLOR[r.status] || '#3b82f6', fillColor: STATUS_COLOR[r.status] || '#3b82f6', fillOpacity: 0.5 }}
