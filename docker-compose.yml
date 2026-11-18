@@ -1,7 +1,12 @@
 # ============================================================
-# WayGo - Docker Compose (alternativa de despliegue)
+# WayGo - Docker Compose (despliegue)
 # En este entorno se usa PostgreSQL portable (tools/postgresql).
-# Este archivo facilita la instalacion en equipos con Docker.
+# Este archivo facilita la instalacion en equipos con Docker y
+# es el que usa Dokploy (Application tipo "Docker Compose").
+#
+# IMPORTANTE: las variables con ${VAR:?} fallan a proposito si no
+# estan definidas. En Dokploy se cargan en la seccion "Environment"
+# de la aplicacion. En local, en un archivo .env (ver .env.example).
 # ============================================================
 services:
   db:
@@ -12,8 +17,9 @@ services:
       POSTGRES_USER: waygo
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
       POSTGRES_DB: waygo_db
-    ports:
-      - "5433:5432"
+    # Sin "ports": la base de datos NO se publica en el host.
+    # Solo el backend la alcanza por el nombre interno "db:5432".
+    # Publicarla (p.ej. 5433:5432) la dejaria expuesta en internet.
     volumes:
       - waygo-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -38,26 +44,72 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
+      # Cookies de sesion. En produccion (HTTPS) debe ser "true".
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Zona horaria operativa de la plataforma
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Bogota}
+      # Tamanio maximo de fotos/documentos (MB)
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-5}
+      # Usuarios iniciales creados por prisma/seed.js.
+      # Si SEED_ADMIN_PASSWORD esta vacio se genera una aleatoria
+      # y se imprime UNA vez en los logs del contenedor.
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@waygo.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_CALLCENTER_EMAIL: ${SEED_CALLCENTER_EMAIL:-callcenter@waygo.local}
+      SEED_CALLCENTER_PASSWORD: ${SEED_CALLCENTER_PASSWORD:-}
+      # Correo. "console" no envia nada (solo imprime en logs).
       MAIL_PROVIDER: ${MAIL_PROVIDER:-console}
-    ports:
-      - "4000:4000"
+      MAIL_FROM: ${MAIL_FROM:-no-reply@waygo.local}
+      # Solo se usan si MAIL_PROVIDER=smtp
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+    # Sin "ports": la API se alcanza a traves del nginx del servicio
+    # "frontend" (/api, /uploads y /socket.io). Publicarla en 4000
+    # solo la expone fuera de nginx sin necesidad.
     volumes:
       - waygo-uploads:/app/backend/uploads
+    # Arranque: migraciones -> seed -> servidor.
+    # prisma/seed.js es idempotente (upsert + chequeo de existencia),
+    # asi que es seguro ejecutarlo en cada deploy.
     command: >
       sh -c "npx prisma migrate deploy --schema prisma/schema.prisma
              && node prisma/seed.js
              && node backend/src/server.js"
+    healthcheck:
+      # GET /api/health ya existe en backend/src/routes/index.js
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # Da tiempo a que terminen migrate + seed antes de contar fallos
+      start_period: 90s
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # Contexto raiz: el Dockerfile necesita el package-lock.json
+      # del workspace para hacer `npm ci` y asi buildear siempre
+      # con las mismas versiones (build reproducible).
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: waygo-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
+      # Entrada de la aplicacion. En Dokploy no hace falta publicarla
+      # (Traefik enruta por la red Docker), pero se conserva para poder
+      # probar `docker compose up` localmente. Si choca con otra app,
+      # cambia el 5173 de la izquierda.
       - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   waygo-pgdata:
